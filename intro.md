@@ -43,6 +43,8 @@
 
 6. %作为注释
 
+7. 匿名变量_用来取值占位，允许多次绑定
+
 ## 运算符
 
 - <小于
@@ -109,7 +111,34 @@ convert_list_to_c(List) ->
 4> lists:map(fun(X) when X > 3 -> X + 3; (X) -> X - 3 end, [1, 2, 3, 4]).
 [-2,-1,0,7]
 ```
+## 发送消息
+Receiver ! message 其中消息可以使用self()来发送 发送进程的pid
+向receiver发送message
 
+Receiver可以是pid也可以是注册后的进程名
+
+## 接受消息
+```erlang
+receive
+   pattern1 ->
+       actions1;
+   pattern2 ->
+       actions2;
+   ....
+   patternN
+       actionsN
+end.
+% eg
+pong() ->
+  receive
+    finished ->
+      io:format("Pong finished~n", []);
+    {ping, Ping_PID} ->
+      io:format("Pong received ping~n", []),
+      Ping_PID ! pong,
+      pong()
+  end.
+```
 # 顺序编程
 
 ## 终端操作
@@ -132,4 +161,118 @@ v(line_no).可以查看历史的错误信息
 7. atom_to_list()
 8. list_to_atom()
 9. integer_to_list()
-10. 
+
+# 并发编程
+
+each thread of execution is called a **process**.
+
+Erlang中的执行线程不共享数据，这就是为什么称为进程
+
+语法:
+
+```erlang
+ spawn（Module，Exported_Function，Arguments List） % 返回值为创建进程的pid， 其中Exported_Function必须是export出的函数
+```
+
+spawn的意思是产生
+
+## 消息队列
+
+每个进程具有自己的消息队列来接受消息。
+
+每一个消息都进行模式匹配，满足条件的消息被消耗，所有模式都不匹配的消息被遗留在消息队列中，开始下一个消息的模式匹配，如果全部消息都不能匹配任一模式，那么该进程将会阻塞等待新的消息。
+
+---
+
+self()返回执行self()的进程的pid
+
+ ## 注册进程名来传递消息
+
+```erlang
+register(some_atom, Pid) 
+%eg 
+register(pong, spawn(tut16, pong, []))
+```
+
+## 分布式编程
+
+使用了非常基础的身份验证机制，在需要互相发送消息的系统上具有**相同的magic cookie**即可
+
+在主目录下创建.erlang.cookie文件即可(具有可读权限)
+
+1. win
+
+   $HOME环境变量
+
+2. Linux
+
+   cd即可
+
+在计算机上运行的每个Erlang系统都称为一个**Erlang节点**。
+
+---
+
+**不同节点之间关于进程名传递消息的注意点**
+要想通过进程注册的名称向其它结点上的进程发送消息，这个时候，我们就不能再只用 registered_name 作为参数了，而需要使用元组 {registered_name,node_name} 作为注册进程的名称参数。***但是对于pid来说无需任何修改***
+
+## 分布式例子
+
+```erlang
+-module(tut17).
+
+
+%% API
+-export([ping/2, pong/0, start_ping/1, start_pong/0]).
+
+ping(0, Pong_Node) ->
+    {pong, Pong_Node} ! finished, % 需要指定register_name, 节点名
+    io:format("ping finished~n", []);
+ping(N, Pong_Node) ->
+    {pong, Pong_Node} ! {ping, self()},
+    receive
+        pong ->
+            io:format("Ping received pong~n", [])
+    end,
+    ping(N - 1, Pong_Node).
+
+pong() ->
+    receive
+        finished ->
+            io:format("Pong finished~n", []);
+        {ping, Ping_PID} ->
+            io:format("Pong received ping~n", []),
+            Ping_PID ! pong,  % 使用pid的话，即使不同节点也能传递消息
+            pong()
+    end.
+
+start_pong() ->
+    register(pong, spawn(tut17, pong, [])).
+
+start_ping(Pong_Node) ->
+    spawn(tut17, ping, [3, Pong_Node]).
+```
+
+### ping节点
+
+erl -sname ping
+
+tut17:start_ping(list_to_atom("pong@DESKTOP-1RVHEGQ")).
+
+### pong节点
+
+erl -sname pong
+
+tut17:start_pong().
+
+### spawn允许在其他节点启动新的进程
+
+**但是需要其他节点已经启动了, er:erl -sname Other_Node**
+
+```erlang
+start(Ping_Node) ->
+    register(pong, spawn(tut18, pong, [])),
+    spawn(Ping_Node, tut18, ping, [3, node()]). % Ping_Node即为Other_Node
+```
+
+**但是输出的结果依旧会显示在启动该进程的节点中，可类比RPC**
+
