@@ -139,6 +139,24 @@ pong() ->
       pong()
   end.
 ```
+消息超时
+
+```erlang
+pong() ->
+    receive
+        {ping, Ping_PID} ->
+            io:format("Pong received ping~n", []),
+            Ping_PID ! pong,
+            pong()
+    after 5000 -> % 单位是ms, 如果收到{ping, Ping_PID}消息那么会取消after，否则会执行，且after必须是最后
+        % receive中其它所有消息的接收处理都优先于超时消息。如果有一个返回值为整数值的函数，我们可以在 after 后调用该函数以将其返回值设为超时时间值，如下所示：
+        % after pong_timeout() ->%
+        io:format("Pong timed out~n", [])
+    end.
+```
+
+
+
 # 顺序编程
 
 ## 终端操作
@@ -316,3 +334,83 @@ process_flag(trap_exit, true)
 
 spawn_link，与 spawn 不同之处在于，它创建一个新进程同时在新进程与创建者之间建立连接。
 
+# 项目文件分布
+
+## 头文件
+
+扩展名为.hrl
+
+虽然可以包括任何erlang的代码，但是通常包括一些record和一些define
+
+如何引用头文件？
+
+-include("File_Name").
+
+## 记录
+
+1. 统一接口
+2. 创建记录时，无需考虑与记录定义的顺序
+3. 在修改记录的定义时，之前所创建的记录代码无需修改，倘若记录的定义新增了某些字段，那么创建记录的代码将会给该字段赋值为undefined
+
+语法:
+
+1. 定义记录
+
+   ```erlang
+   -record(name_of_record,{field_name1, field_name2, field_name3, ......}).
+   ```
+
+   例子
+
+   ```erlang
+   -record(message_to,{to_name, message}).
+   %这等价于：
+   %
+   %{message_to, To_Name, Message} 变量名不一定是叫这个
+   ```
+
+   
+
+2. 创建记录
+
+   ```erlang
+   #message_to{message="hello", to_name=fred)
+   %无需考虑字段的位置
+   ```
+
+   例子
+
+   ```erlang
+   #message_to{message="hello", to_name=fred)
+   %等价于:{message_to, fred, "hello"}
+   ```
+
+   
+
+## 宏
+
+```erlang
+%%% Configure the location of the server node,
+-define(server_node, messenger@super). 
+% 后面使用的server_node将会替换为messenger@super
+```
+
+如何使用？
+
+```erlang
+?server_node % 在编译器会被展开
+```
+
+Erlang预定义了一些宏：
+
+```erlang
+?MODULE  %%当前模块的名字
+
+?MODULE_STRING  %%当前模块的名字的字符串
+
+?FILE  %%当前模块的文件名
+
+?LINE  %%当前行号
+
+?MACHINE  %%虚拟机的名字，固定为'BEAM'
+```
