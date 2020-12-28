@@ -537,3 +537,182 @@ end.
 
 不同于c语言，因为if是一种表达式而所有的表达式都应该具有值
 
+# 第五章
+
+记录和映射
+
+记录类似python中的named-tuple
+
+## 记录
+
+**记录是元组的另外一种表现形式**，性能相同
+
+在shell中如果需要使用记录，那么需要rr(file.hrl) rr的意思是read record
+
+可以在shell中使用rf(record_name)来忘记记录的定义，其显示结果将表示为元组
+
+```erlang
+22> rr("records.hrl").
+[todo]
+23> X2.
+#todo{status = done,who = joe,text = "Fix errata in book"}
+24> rf(todo).
+ok
+25> X2.
+{todo,done,joe,"Fix errata in book"}
+
+```
+
+语法:
+
+```erlang
+-record(name, {
+%% 以下两个具有默认值
+key1 = Default1,
+key2 = Default2,
+...
+key3 % 等价于key3 = undefined
+})
+```
+
+**name和key都是原子**
+
+---
+
+创建和更新记录的语法？
+
+```erlang
+2> #todo{}.
+#todo{status = reminder,who = joe,text = undefined} % 创建记录,使用默认值
+3> X1 = #todo{status=urgent, text="Fix errata in book"}.
+#todo{status = urgent,who = joe,text = "Fix errata in book"}
+4> X1.
+#todo{status = urgent,who = joe,text = "Fix errata in book"}
+5> X2 = X1#todo{status=done}.
+#todo{status = done,who = joe,text = "Fix errata in book"}  % 更新记录
+6> X2.
+#todo{status = done,who = joe,text = "Fix errata in book"}
+7> X1.
+#todo{status = urgent,who = joe,text = "Fix errata in book"}
+
+```
+
+提取记录的值？
+
+```erlang 
+8> #todo{who=W, text=Txt} = X2.
+#todo{status = done,who = joe,text = "Fix errata in book"}
+9> Txt.
+"Fix errata in book"
+10> W.
+joe
+12> X2.
+#todo{status = done,who = joe,text = "Fix errata in book"}
+13> X2#todo.text. % 单单获取记录的某个字段值
+"Fix errata in book"
+```
+
+## 映射
+
+语法基本同记录，但是key:value的分隔符不再是=而是=>或者:=
+
+key任何已绑定的erlang数据类型，value可以是任何erlang数据类型
+
+```erlang
+27> Facts = #{{wife, fread} => "Sue", {age, fred} => 45, {daughter, fread}
+ => "Mary", {likes, jim} => [1, 2]}.
+#{{age,fred} => 45,
+  {daughter,fread} => "Mary",
+  {likes,jim} => [1,2],
+  {wife,fread} => "Sue"}
+
+```
+
+按照key排序
+
+```erlang
+29> F1 = #{a => 1, b => 2}.
+#{a => 1,b => 2}
+30> F2 = #{b => 2, a => 1}.
+#{a => 1,b => 2}
+31> F1 = F2.
+#{a => 1,b => 2}
+32> F1 == F2.
+true
+```
+
+---
+
+=>和:=的区别
+
+NewMap = OldMap#{Key1 Op Value1, ...}
+
+表达式K => V有两种用途，一种是将现有键K的值更新为新值V，另一种是给映射组添加一
+个全新的K-V对。**这个操作总是成功的。**
+表达式K := V的作用是将现有键K的值更新为新值V。**如果被更新的映射组不包含键K，这个
+操作就会失败。在性能上:=也要优于=>因为不会扩充映射的结构**
+
+因此一般在定义的时候使用key => value,而在更新的时候使用key := value，
+
+```erlang
+31> F1.
+#{a => 1,b => 2}
+32> F3 = F1#{c => xx}.
+#{a => 1,b => 2,c => xx}
+33> F4 = F1#{ c:= 3}.
+** exception error: {badkey,c}
+     in function  maps:update/3
+        called as maps:update(c,3,#{a => 1,b => 2})
+     in call from erl_eval:'-expr/5-fun-0-'/2 (erl_eval.erl, line 259)
+     in call from lists:foldl/3 (lists.erl, line 1267)
+
+```
+
+---
+
+如何提取某些key？
+
+```erlang
+46> Henry8 = #{ class => king, born => 1491, died => 1547 }.
+#{born => 1491,class => king,died => 1547}
+47> #{born := Born} = Henry8.
+#{born => 1491,class => king,died => 1547}
+48> Born.
+1491
+```
+
+例子
+
+```erlang
+%%% 返回各个字符的出现次数
+
+count_characters(Str)   ->
+    count_characters(Str, #{}).
+
+count_characters([H | T], X)    ->
+    case maps:is_key([H], X)  of
+        false   -> count_characters(T, X#{ [H] => 1 });
+        true    ->
+            #{ [H] := N } = X,
+            count_characters(T, X#{ [H] := N + 1 })
+    end;
+count_characters([], X)     ->
+    X.
+```
+
+### 映射的内置函数
+
+```erlang
+6> maps:to_list(#{a=>"B", c=>"D"}).
+[{a,"B"},{c,"D"}]
+```
+
+### 排序规则
+
+映射在比较时首先会比大小，然后再按照键的排序比较键和值。
+1. 如果A和B是映射，那么当maps:size(A) < maps:size(B)时A < B。
+2. 如果A和B是大小相同的映射组，那么当maps:to_list(A) < maps:to_list(B)时A < B。
+    举个例子，A = #{age => 23, person => "jim"}小于B = # {email => "sue@somplace.com", name => "sue"}。这是因为A的最小键（age）比B的最小键（email）更小。
+3. 当映射组与其他Erlang数据类型相比较时，因为我们认为映射组比列表或元组“更复杂”，
+所以映射组总是会大于列表或元组。
+
